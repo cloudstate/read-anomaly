@@ -1,0 +1,12 @@
+[versions]
+aws = "2.32.16"
+slf4j = "2.0.17"
+
+[libraries]
+sts = { module = "software.amazon.awssdk:sts", version.ref = "aws" }
+sso = { module = "software.amazon.awssdk:sso", version.ref = "aws" }
+
+ddb = { module = "software.amazon.awssdk:dynamodb", version.ref = "aws" }
+
+slf4j = { module = "org.slf4j:slf4j-nop", version.ref = "slf4j" }
+

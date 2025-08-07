@@ -1,0 +1,29 @@
+plugins {
+  id 'application'
+}
+
+repositories {
+  mavenCentral()
+}
+
+dependencies {
+  // See \gradle\libs.versions.toml
+
+  implementation (
+    libs.ddb,
+    libs.sso,
+    libs.sts
+  )
+  
+  runtimeOnly libs.slf4j
+}
+
+java {
+  toolchain {
+    languageVersion = JavaLanguageVersion.of(21)
+  }
+}
+
+application {
+  mainClass = 'org.cloudstate.ReadAnomaly'
+}
