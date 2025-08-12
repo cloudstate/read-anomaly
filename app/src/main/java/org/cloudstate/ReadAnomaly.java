@@ -29,8 +29,8 @@ public final class ReadAnomaly {
 	private static final Region REGION = Region.EU_WEST_1;
 
 	private static final String TABLE = "test_table";
-	private static final String HK = "hk";
-	private static final String RK = "rk";
+	private static final String ID = "id";
+	private static final String VERSION = "version";
 
 	private static final int CHILDS = 30;
 	private static final boolean CONSISTENT_READ = true;
@@ -163,7 +163,7 @@ public final class ReadAnomaly {
 		// Query for the most current version of the item with the given id
 		final var request = QueryRequest.builder()
 				.tableName(TABLE)
-				.keyConditionExpression("%s = :id".formatted(HK))
+				.keyConditionExpression("%s = :id".formatted(ID))
 				.expressionAttributeValues(Map.of(":id", fromS(id)))
 				.scanIndexForward(false)
 				.limit(1)
@@ -176,7 +176,7 @@ public final class ReadAnomaly {
 			throw new IllegalStateException("Read anomaly for id: " + id);
 		}
 
-		return Item.of(items.get(0));
+		return Item.of(items.getFirst());
 	}
 
 	static void verify(final DynamoDbClient db, final String id, final int versions) {
@@ -186,7 +186,7 @@ public final class ReadAnomaly {
 	static void checkExist(final DynamoDbClient db, final String id, final int version) {
 		final var request = GetItemRequest.builder()
 				.tableName(TABLE)
-				.key(Map.of(HK, fromS(id), RK, fromN(Integer.toString(version))))
+				.key(Map.of(ID, fromS(id), VERSION, fromN(Integer.toString(version))))
 				.build();
 
 		if (!db.getItem(request).hasItem()) {
@@ -209,7 +209,7 @@ public final class ReadAnomaly {
 
 		private static final String ACTION = "action";
 		private static final String NE = "attribute_not_exists(%s) and attribute_not_exists(%s)"
-				.formatted(HK, RK);
+				.formatted(ID, VERSION);
 
 		public static Item create(final String id) {
 			return new Item(id, 0, "create");
@@ -220,8 +220,8 @@ public final class ReadAnomaly {
 		}
 
 		public Put toPut() {
-			final var item = Map.of(HK, fromS(id),
-					RK, fromN(Integer.toString(version)),
+			final var item = Map.of(ID, fromS(id),
+					VERSION, fromN(Integer.toString(version)),
 					ACTION, fromS(action));
 
 			return Put.builder()
@@ -232,8 +232,8 @@ public final class ReadAnomaly {
 		}
 
 		public static Item of(final Map<String, AttributeValue> item) {
-			final var id = item.get(HK).s();
-			final var version = parseInt(item.get(RK).n());
+			final var id = item.get(ID).s();
+			final var version = parseInt(item.get(VERSION).n());
 			final var action = item.get(ACTION).s();
 
 			return new Item(id, version, action);
