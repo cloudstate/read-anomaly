@@ -2,9 +2,11 @@ package org.cloudstate;
 
 import static java.lang.Integer.parseInt;
 import static java.lang.Thread.currentThread;
+import static java.lang.Thread.sleep;
 import static java.util.Arrays.stream;
 import static java.util.concurrent.Executors.newFixedThreadPool;
 import static java.util.concurrent.TimeUnit.MINUTES;
+import static java.util.stream.Collectors.joining;
 import static java.util.stream.IntStream.range;
 import static software.amazon.awssdk.services.dynamodb.model.AttributeValue.fromN;
 import static software.amazon.awssdk.services.dynamodb.model.AttributeValue.fromS;
@@ -32,15 +34,24 @@ public final class ReadAnomaly {
 	private static final String ID = "id";
 	private static final String VERSION = "version";
 
-	private static final int CHILDS = 30;
+	private static final int CHILDS = 15;
 	private static final boolean CONSISTENT_READ = true;
 
 	public static void main(final String[] args) throws InterruptedException {
 		try (final var db = connectToDatabase()) {
 			setUp(db);
+
+			System.out.println("Waiting for replication to occur in DynamoDB...");
+			
+			for(int n=10; n > 0; n--) {
+				System.out.println("Starting in %d...".formatted(n));
+				sleep(1000);
+			}
+			
 			run(db);
 
 			System.out.println("No read anomaly detected!");
+			System.out.println("Please add 5-10 more CHILDS and run again to increase the chance of detecting a read anomaly.");
 		} catch (final ExpiredTokenException e) {
 			System.out.println("Did you run 'aws sso login'?");
 		} catch (final IllegalStateException e) {
@@ -52,10 +63,10 @@ public final class ReadAnomaly {
 		System.out.println("Setting up the database with 1 parent and %d childs...".formatted(CHILDS));
 
 		// Store the first parent item
-		store(db, Item.create("parent"));
+		store(db, true, Item.create("parent"));
 
 		// Store the first version of each child item
-		range(0, CHILDS).forEach(n -> store(db, Item.create("child-" + n)));
+		range(0, CHILDS).forEach(n -> store(db, false, Item.create("child-" + n)));
 
 		System.out.println("Database setup completed, verifying initial state...");
 
@@ -112,7 +123,7 @@ public final class ReadAnomaly {
 				// and update it with the childId as the action
 				parent = read(db, "parent").update(childId);
 
-				if (store(db, parent, child)) {
+				if (store(db, false, parent, child)) {
 					break; // If the store was successful, exit the loop
 				}
 
@@ -132,7 +143,7 @@ public final class ReadAnomaly {
 		}
 	}
 
-	static boolean store(final DynamoDbClient db, final Item... items) {
+	static boolean store(final DynamoDbClient db, boolean logRequestId, final Item... items) {
 		// Create a transaction request with the items to store
 		final var txItems = stream(items)
 				.map(item -> TransactWriteItem.builder()
@@ -141,9 +152,14 @@ public final class ReadAnomaly {
 				.toList();
 
 		try {
-			db.transactWriteItems(request -> request.transactItems(txItems));
+			var response = db.transactWriteItems(request -> request.transactItems(txItems));
 
-			// If the transaction was successful, return true
+			if (logRequestId) {
+				System.out.println("Storing items: " + stream(items).map(Item::toString).collect(joining(", ")));
+				System.out.println("Request id: " + response.responseMetadata().requestId());
+			}
+			
+			// The transaction was successful
 			return true;
 		} catch (final TransactionCanceledException e) {
 			// This exception only occurs for the parent item, the first in the list.
@@ -154,7 +170,7 @@ public final class ReadAnomaly {
 				return false;
 			}
 
-			// If the exception is not one of the expected ones, rethrow it
+			// The exception is not one of the expected ones
 			throw e;
 		}
 	}
@@ -170,10 +186,13 @@ public final class ReadAnomaly {
 				.consistentRead(CONSISTENT_READ)
 				.build();
 
-		final var items = db.query(request).items();
+		var response = db.query(request);
+		final var items = response.items();
 		if (items.isEmpty()) {
 			// This should never happen!!
-			throw new IllegalStateException("Read anomaly for id: " + id);
+			
+			var requestId = response.responseMetadata().requestId();
+			throw new IllegalStateException("Read anomaly for item: " + id+ ", request id: " + requestId);
 		}
 
 		return Item.of(items.getFirst());
