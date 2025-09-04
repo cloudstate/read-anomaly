@@ -75,7 +75,7 @@ public final class ReadAnomaly {
 	}
 
 	static void run(final DynamoDbClient db) throws InterruptedException {
-		System.out.println("Running the test...");
+		System.out.println("Running the test using %s consistent reads...".formatted(CONSISTENT_READ ? "strongly" : "eventually"));
 
 		try (final var pool = newFixedThreadPool(CHILDS)) {
 			// Using a CountDownLatch to synchronize the start of all child tasks
